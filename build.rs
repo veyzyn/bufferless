@@ -4,11 +4,13 @@ mod icon;
 
 use std::path::{Path, PathBuf};
 
-/// Sizes Windows picks from for the taskbar, Explorer, Alt+Tab, etc.
-const ICON_SIZES: [u32; 9] = [16, 20, 24, 32, 40, 48, 64, 128, 256];
+/// Sizes embedded for Explorer. The app's own windows render the icon at
+/// runtime at the exact size they need, so only the common sizes live here
+/// (large Explorer views scale up from 48).
+const ICON_SIZES: [u32; 3] = [16, 32, 48];
 const RT_ICON: u16 = 3;
 const RT_GROUP_ICON: u16 = 14;
-/// Resource id of the icon group; the app loads it with this id too.
+/// Resource id of the icon group (Explorer uses the first group).
 const ICON_GROUP_ID: u16 = 1;
 
 fn main() {

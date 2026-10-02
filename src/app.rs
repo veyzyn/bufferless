@@ -241,7 +241,7 @@ impl App {
                 .map(|size| (path, size))
                 .map_err(|e| e.to_string());
             match &result {
-                Ok((p, size)) => log!("saved {} ({size} bytes) in {:?}", p.display(), start.elapsed()),
+                Ok((p, size)) => log!("saved {} ({size} bytes) in {} ms", p.display(), start.elapsed().as_millis()),
                 Err(e) => log!("save failed: {e}"),
             }
             let boxed = Box::into_raw(Box::new(result));
@@ -258,7 +258,9 @@ impl App {
                     util::play_saved_sound();
                 }
                 let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                self.notify("Clip saved", &format!("{name} ({:.1} MB)", size as f64 / 1e6));
+                // Integer math on purpose: float formatting costs ~5 KB in the tiny build.
+                let tenths = (size + 50_000) / 100_000;
+                self.notify("Clip saved", &format!("{name} ({}.{} MB)", tenths / 10, tenths % 10));
                 self.last_clip = Some(path);
             }
             Err(e) => {

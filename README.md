@@ -62,6 +62,12 @@ Requires Rust (MSVC toolchain) on Windows 10 or 11.
 cargo build --release
 ```
 
+For the smallest possible exe (about 200 KB), run `.\build-tiny.ps1`. It needs a
+nightly toolchain and [UPX](https://upx.github.io/) (`winget install UPX.UPX`),
+rebuilds the standard library optimized for size, and writes `dist\bufferless.exe`.
+UPX-packed executables are sometimes flagged by antivirus heuristics, so pass
+`-NoUpx` for builds you share (about 410 KB).
+
 ## Known limitations
 
 - The mouse cursor isn't drawn into clips (Desktop Duplication delivers it separately).

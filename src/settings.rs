@@ -126,8 +126,8 @@ pub fn open(cfg: Config) {
         ) else {
             return;
         };
-        let small = crate::util::load_app_icon(GetSystemMetrics(SM_CXSMICON));
-        let big = crate::util::load_app_icon(GetSystemMetrics(SM_CXICON));
+        let small = crate::util::app_icon(GetSystemMetrics(SM_CXSMICON));
+        let big = crate::util::app_icon(GetSystemMetrics(SM_CXICON));
         SendMessageW(hwnd, WM_SETICON, Some(WPARAM(ICON_SMALL as usize)), Some(LPARAM(small.0 as isize)));
         SendMessageW(hwnd, WM_SETICON, Some(WPARAM(ICON_BIG as usize)), Some(LPARAM(big.0 as isize)));
 

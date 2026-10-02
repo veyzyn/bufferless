@@ -1,3 +1,9 @@
 [target.x86_64-pc-windows-msvc]
-# Link the C runtime statically so the exe runs without the VC++ redistributable.
-rustflags = ["-C", "target-feature=+crt-static"]
+# "Hybrid CRT": link the VC runtime statically but use the Universal CRT DLL,
+# which ships with Windows 10+. No redistributable needed, and much smaller
+# than linking the UCRT statically too. Keep build-tiny.ps1 in sync.
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", "link-arg=/NODEFAULTLIB:libucrt.lib",
+    "-C", "link-arg=/DEFAULTLIB:ucrt.lib",
+]

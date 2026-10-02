@@ -1,11 +1,9 @@
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
 use windows::Win32::UI::Input::KeyboardAndMouse::{MOD_ALT, VK_F10};
 use windows::Win32::UI::Shell::{FOLDERID_RoamingAppData, FOLDERID_Videos, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
-#[serde(default)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Config {
     /// RegisterHotKey modifier flags (MOD_ALT, MOD_CONTROL, ...).
     pub hotkey_modifiers: u32,
@@ -68,16 +66,77 @@ impl Config {
     }
 
     pub fn load() -> Self {
-        let mut cfg: Self =
-            std::fs::read_to_string(Self::path()).ok().and_then(|s| toml::from_str(&s).ok()).unwrap_or_default();
+        let mut cfg = Self::default();
+        if let Ok(text) = std::fs::read_to_string(Self::path()) {
+            cfg.parse(&text);
+        }
         cfg.sanitize();
         cfg
     }
 
     pub fn save(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(Self::dir())?;
-        let text = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(Self::path(), text)
+        std::fs::write(Self::path(), self.to_toml())
+    }
+
+    /// Read `key = value` lines (the flat subset of TOML this file uses).
+    /// Unknown keys and malformed values are ignored and keep their defaults.
+    fn parse(&mut self, text: &str) {
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with('#') {
+                continue;
+            }
+            let Some((key, value)) = line.split_once('=') else { continue };
+            let value = value.trim();
+            let num = || value.parse::<u32>().ok();
+            let flag = || match value {
+                "true" => Some(true),
+                "false" => Some(false),
+                _ => None,
+            };
+            let text = || parse_string(value);
+            match key.trim() {
+                "hotkey_modifiers" => set(&mut self.hotkey_modifiers, num()),
+                "hotkey_key" => set(&mut self.hotkey_key, num()),
+                "replay_seconds" => set(&mut self.replay_seconds, num()),
+                "monitor" => set(&mut self.monitor, num()),
+                "resolution" => set(&mut self.resolution, num()),
+                "fps" => set(&mut self.fps, num()),
+                "bitrate_mbps" => set(&mut self.bitrate_mbps, num()),
+                "system_audio" => set(&mut self.system_audio, flag()),
+                "microphone" => set(&mut self.microphone, flag()),
+                "microphone_device" => set(&mut self.microphone_device, text()),
+                "microphone_volume" => set(&mut self.microphone_volume, num()),
+                "save_folder" => set(&mut self.save_folder, text()),
+                "save_sound" => set(&mut self.save_sound, flag()),
+                "start_with_windows" => set(&mut self.start_with_windows, flag()),
+                _ => {}
+            }
+        }
+    }
+
+    fn to_toml(&self) -> String {
+        let s = |v: &str| format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\""));
+        format!(
+            "hotkey_modifiers = {}\nhotkey_key = {}\nreplay_seconds = {}\nmonitor = {}\nresolution = {}\nfps = {}\n\
+             bitrate_mbps = {}\nsystem_audio = {}\nmicrophone = {}\nmicrophone_device = {}\nmicrophone_volume = {}\n\
+             save_folder = {}\nsave_sound = {}\nstart_with_windows = {}\n",
+            self.hotkey_modifiers,
+            self.hotkey_key,
+            self.replay_seconds,
+            self.monitor,
+            self.resolution,
+            self.fps,
+            self.bitrate_mbps,
+            self.system_audio,
+            self.microphone,
+            s(&self.microphone_device),
+            self.microphone_volume,
+            s(&self.save_folder),
+            self.save_sound,
+            self.start_with_windows,
+        )
     }
 
     fn sanitize(&mut self) {
@@ -99,5 +158,64 @@ impl Config {
     pub fn estimated_memory_mb(&self) -> u32 {
         let bytes_per_sec = self.bitrate_mbps as u64 * 1_000_000 / 8 + crate::mux::AUDIO_BITRATE as u64 / 8;
         (bytes_per_sec * (self.replay_seconds as u64 + 3) / 1_000_000) as u32
+    }
+}
+
+fn set<T>(field: &mut T, value: Option<T>) {
+    if let Some(v) = value {
+        *field = v;
+    }
+}
+
+/// A TOML basic ("...") or literal ('...') string.
+fn parse_string(value: &str) -> Option<String> {
+    if let Some(inner) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
+        return Some(inner.to_string());
+    }
+    let inner = value.strip_prefix('"')?.strip_suffix('"')?;
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                other => out.push(other),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips() {
+        let mut cfg = Config::default();
+        cfg.save_folder = r#"C:\Users\x\Vids "quoted""#.into();
+        cfg.microphone = true;
+        cfg.fps = 144;
+        let mut back = Config::default();
+        back.parse(&cfg.to_toml());
+        assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn reads_files_written_by_the_toml_crate() {
+        let mut cfg = Config::default();
+        cfg.parse(
+            r"hotkey_modifiers = 3
+save_folder = 'C:\Users\you\Videos\Bufferless'
+bogus = 1
+fps = nope
+",
+        );
+        assert_eq!(cfg.hotkey_modifiers, 3);
+        assert_eq!(cfg.save_folder, r"C:\Users\you\Videos\Bufferless");
+        assert_eq!(cfg.fps, Config::default().fps);
     }
 }

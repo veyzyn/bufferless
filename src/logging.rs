@@ -20,6 +20,8 @@ pub fn write(msg: String) {
         "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} {}\n",
         t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, msg
     );
+    // Release builds have no console, so don't drag in stdio for nothing.
+    #[cfg(debug_assertions)]
     eprint!("{line}");
     if let Some(f) = FILE.lock().unwrap().as_mut() {
         let _ = f.write_all(line.as_bytes());

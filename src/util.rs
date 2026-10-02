@@ -5,7 +5,6 @@ use std::sync::OnceLock;
 use windows::Win32::Foundation::{CloseHandle, HWND};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::Media::Audio::{PlaySoundW, SND_ALIAS, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_DWORD, RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW,
 };
@@ -72,14 +71,10 @@ pub fn icon_from_rgba(size: u32, rgba: &[u8]) -> HICON {
     }
 }
 
-/// The app icon embedded by build.rs, at the requested size.
-pub fn load_app_icon(size: i32) -> HICON {
-    unsafe {
-        let instance = GetModuleHandleW(None).unwrap_or_default();
-        LoadImageW(Some(instance.into()), PCWSTR(1 as _), IMAGE_ICON, size, size, LR_DEFAULTCOLOR)
-            .map(|h| HICON(h.0))
-            .unwrap_or_default()
-    }
+/// The app icon (indigo tile), rendered at exactly the requested size.
+pub fn app_icon(size: i32) -> HICON {
+    let size = size.max(16) as u32;
+    icon_from_rgba(size, &crate::icon::tile(size))
 }
 
 /// Whether the taskbar uses the light theme (so tray icons should be dark).
