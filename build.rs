@@ -17,7 +17,13 @@ const ICON_GROUP_ID: u16 = 1;
 
 fn main() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let manifest = root.join("bufferless.manifest");
+    // build-tiny.ps1 sets this. UPX can't compress the manifest (Windows reads
+    // it before unpacking), so the tiny build uses a minified one without the
+    // DPI setting (the app sets that at startup anyway) and without the UAC
+    // section the linker would add (it does nothing for 64-bit apps).
+    println!("cargo:rerun-if-env-changed=BUFFERLESS_TINY");
+    let tiny = std::env::var_os("BUFFERLESS_TINY").is_some();
+    let manifest = root.join(if tiny { "bufferless.tiny.manifest" } else { "bufferless.manifest" });
     println!("cargo:rerun-if-changed={}", manifest.display());
     println!("cargo:rerun-if-changed=src/icon.rs");
 
@@ -25,6 +31,9 @@ fn main() {
     // compiler needed.
     println!("cargo:rustc-link-arg-bins=/MANIFEST:EMBED");
     println!("cargo:rustc-link-arg-bins=/MANIFESTINPUT:{}", manifest.display());
+    if tiny {
+        println!("cargo:rustc-link-arg-bins=/MANIFESTUAC:NO");
+    }
     let res = write_icon_res();
     println!("cargo:rustc-link-arg-bins={}", res.display());
 }

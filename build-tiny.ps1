@@ -30,7 +30,11 @@ if (-not (rustup component list --toolchain nightly --installed | Select-String 
 # so nothing from the C runtime is linked at all. RUSTFLAGS replaces
 # .cargo\config.toml's rustflags. location-detail/fmt-debug drop panic
 # locations and Debug output.
-$saved = @{ RUSTFLAGS = $env:RUSTFLAGS; CARGO_PROFILE_RELEASE_OPT_LEVEL = $env:CARGO_PROFILE_RELEASE_OPT_LEVEL }
+$saved = @{
+    RUSTFLAGS = $env:RUSTFLAGS
+    CARGO_PROFILE_RELEASE_OPT_LEVEL = $env:CARGO_PROFILE_RELEASE_OPT_LEVEL
+    BUFFERLESS_TINY = $env:BUFFERLESS_TINY
+}
 try {
     $env:RUSTFLAGS = @(
         '-C link-arg=/NODEFAULTLIB'
@@ -47,15 +51,17 @@ try {
         '-C link-arg=/DYNAMICBASE:NO'
     ) -join ' '
     $env:CARGO_PROFILE_RELEASE_OPT_LEVEL = 'z'
+    $env:BUFFERLESS_TINY = '1' # build.rs: minified manifest
     cargo +nightly build --release --manifest-path (Join-Path $root 'Cargo.toml') `
         --target $target --target-dir $targetDir `
         -Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem,optimize_for_size
     if ($LASTEXITCODE) { throw 'cargo build failed' }
 }
 finally {
-    foreach ($name in $saved.Keys) { Set-Item "env:$name" $saved[$name] -ErrorAction SilentlyContinue }
-    if (-not $saved.RUSTFLAGS) { Remove-Item env:RUSTFLAGS -ErrorAction SilentlyContinue }
-    if (-not $saved.CARGO_PROFILE_RELEASE_OPT_LEVEL) { Remove-Item env:CARGO_PROFILE_RELEASE_OPT_LEVEL -ErrorAction SilentlyContinue }
+    foreach ($name in $saved.Keys) {
+        if ($null -eq $saved[$name]) { Remove-Item "env:$name" -ErrorAction SilentlyContinue }
+        else { Set-Item "env:$name" $saved[$name] }
+    }
 }
 
 New-Item -ItemType Directory -Force $dist | Out-Null
