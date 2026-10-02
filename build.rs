@@ -1,3 +1,5 @@
+extern crate alloc;
+
 #[allow(dead_code)] // the tray glyph is only used at runtime
 #[path = "src/icon.rs"]
 mod icon;

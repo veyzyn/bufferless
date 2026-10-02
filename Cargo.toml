@@ -8,6 +8,7 @@ description = "Lightweight always-on replay buffer for Windows"
 
 [dependencies.windows]
 version = "0.62"
+default-features = false
 features = [
     "Win32_Devices_FunctionDiscovery",
     "Win32_Foundation",
@@ -25,7 +26,9 @@ features = [
     "Win32_Storage_FileSystem",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
+    "Win32_System_IO",
     "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
     "Win32_System_Ole",
     "Win32_System_Performance",
     "Win32_System_Registry",

@@ -1,8 +1,10 @@
 //! In-memory replay buffer of *encoded* packets. Saving a clip never re-encodes,
 //! it just copies packets from the last keyframe before the requested start.
 
-use std::collections::VecDeque;
-use std::sync::Arc;
+use crate::prelude::*;
+
+use alloc::collections::VecDeque;
+use alloc::sync::Arc;
 
 use crate::clock::SECOND;
 

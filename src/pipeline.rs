@@ -1,9 +1,13 @@
 //! Owns the capture threads. Stopping joins them, so a restart with new
 //! settings never has two encoders fighting over the GPU.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
+use crate::prelude::*;
+
+use alloc::sync::Arc;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+use crate::rt::Mutex;
+use crate::rt::thread::{self, JoinHandle};
 
 use crate::audio::{self, AudioConfig};
 use crate::capture::{self, VideoConfig};
@@ -12,13 +16,13 @@ use crate::ring::Ring;
 
 pub struct Pipeline {
     stop: Arc<AtomicBool>,
-    threads: Vec<JoinHandle<()>>,
+    threads: Vec<JoinHandle>,
     pub status: Arc<Mutex<String>>,
 }
 
 impl Pipeline {
     pub fn start(cfg: &Config, ring: Arc<Mutex<Ring>>) -> Self {
-        ring.lock().unwrap().set_keep(cfg.replay_seconds);
+        ring.lock().set_keep(cfg.replay_seconds);
         let stop = Arc::new(AtomicBool::new(false));
         let status = Arc::new(Mutex::new("Starting...".to_string()));
         let mut threads = Vec::new();
@@ -31,12 +35,7 @@ impl Pipeline {
         };
         {
             let (ring, stop, status) = (ring.clone(), stop.clone(), status.clone());
-            threads.push(
-                std::thread::Builder::new()
-                    .name("video".into())
-                    .spawn(move || capture::run(video, ring, stop, status))
-                    .unwrap(),
-            );
+            threads.push(thread::spawn("video", move || capture::run(video, ring, stop, status)));
         }
 
         if cfg.system_audio || cfg.microphone {
@@ -47,16 +46,14 @@ impl Pipeline {
                 mic_volume: cfg.microphone_volume as f32 / 100.0,
             };
             let (ring, stop) = (ring.clone(), stop.clone());
-            threads.push(
-                std::thread::Builder::new().name("audio".into()).spawn(move || audio::run(audio, ring, stop)).unwrap(),
-            );
+            threads.push(thread::spawn("audio", move || audio::run(audio, ring, stop)));
         }
 
         Self { stop, threads, status }
     }
 
     pub fn status(&self) -> String {
-        self.status.lock().unwrap().clone()
+        self.status.lock().clone()
     }
 }
 
@@ -64,8 +61,8 @@ impl Drop for Pipeline {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         for t in self.threads.drain(..) {
-            let name = t.thread().name().unwrap_or("?").to_string();
-            let _ = t.join();
+            let name = t.name();
+            t.join();
             crate::log!("pipeline: {name} thread stopped");
         }
     }

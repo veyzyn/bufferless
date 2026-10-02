@@ -1,8 +1,11 @@
 //! The tray app: hidden window, tray icon, global hotkey, clip saving.
 
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use crate::prelude::*;
+
+use alloc::sync::Arc;
+use core::cell::RefCell;
+
+use crate::rt::Mutex;
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -14,8 +17,9 @@ use windows::core::{PCWSTR, w};
 use crate::config::Config;
 use crate::pipeline::Pipeline;
 use crate::ring::Ring;
+use crate::rt::{self, UiCell, fs, path};
 use crate::util::{copy_wide, hotkey_name, wide};
-use crate::{icon, log, mux, settings, util};
+use crate::{clock, icon, log, mux, settings, util};
 
 const WM_TRAY: u32 = WM_APP + 1;
 const WM_CLIP_SAVED: u32 = WM_APP + 2;
@@ -31,7 +35,6 @@ const CMD_OPEN_FOLDER: usize = 101;
 const CMD_SETTINGS: usize = 102;
 const CMD_QUIT: usize = 103;
 
-
 struct App {
     hwnd: HWND,
     cfg: Config,
@@ -42,12 +45,10 @@ struct App {
     showing_error: bool,
     taskbar_created: u32,
     hotkey_ok: bool,
-    last_clip: Option<PathBuf>,
+    last_clip: Option<String>,
 }
 
-thread_local! {
-    static APP: RefCell<Option<App>> = const { RefCell::new(None) };
-}
+static APP: UiCell<RefCell<Option<App>>> = UiCell::new(RefCell::new(None));
 
 fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
     APP.with(|a| a.borrow_mut().as_mut().map(f))
@@ -58,10 +59,7 @@ fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
 fn tray_icons() -> (HICON, HICON) {
     let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16) as u32;
     let rgb = if util::taskbar_is_light() { [0x1f, 0x1f, 0x1f] } else { [0xff, 0xff, 0xff] };
-    (
-        util::icon_from_rgba(size, &icon::glyph(size, rgb, 1.0)),
-        util::icon_from_rgba(size, &icon::glyph(size, rgb, 0.4)),
-    )
+    (util::icon_from_rgba(size, &icon::glyph(size, rgb, 1.0)), util::icon_from_rgba(size, &icon::glyph(size, rgb, 0.4)))
 }
 
 pub fn current_config() -> Config {
@@ -177,7 +175,7 @@ impl App {
 
     fn tooltip(&self) -> String {
         let status = self.pipeline.as_ref().map(|p| p.status()).unwrap_or_default();
-        let mb = self.ring.lock().unwrap().bytes() / 1_000_000;
+        let mb = self.ring.lock().bytes() / 1_000_000;
         format!("Bufferless\n{status}\nLast {}s in memory ({mb} MB)", self.cfg.replay_seconds)
     }
 
@@ -221,27 +219,27 @@ impl App {
     }
 
     fn save_clip(&mut self) {
-        let Some(clip) = self.ring.lock().unwrap().snapshot(self.cfg.replay_seconds) else {
+        let Some(clip) = self.ring.lock().snapshot(self.cfg.replay_seconds) else {
             util::play_error_sound();
             self.notify("Nothing to save yet", "The replay buffer is still empty.");
             return;
         };
-        let folder = PathBuf::from(&self.cfg.save_folder);
+        let folder = self.cfg.save_folder.clone();
         let stem = format!("{} {}", util::foreground_app_name(), util::timestamp());
         let hwnd = self.hwnd.0 as usize;
-        std::thread::spawn(move || {
-            let start = std::time::Instant::now();
+        rt::thread::spawn("save", move || {
+            let start = clock::now();
             // Two saves within the same second shouldn't overwrite each other.
             let path = (1..)
-                .map(|n| folder.join(if n == 1 { format!("{stem}.mp4") } else { format!("{stem} ({n}).mp4") }))
-                .find(|p| !p.exists())
+                .map(|n| path::join(&folder, &if n == 1 { format!("{stem}.mp4") } else { format!("{stem} ({n}).mp4") }))
+                .find(|p| !fs::exists(p))
                 .unwrap();
-            let result = std::fs::create_dir_all(&folder)
+            let result = fs::create_dir_all(&folder)
                 .and_then(|_| mux::write_mp4(&path, &clip))
                 .map(|size| (path, size))
                 .map_err(|e| e.to_string());
             match &result {
-                Ok((p, size)) => log!("saved {} ({size} bytes) in {} ms", p.display(), start.elapsed().as_millis()),
+                Ok((p, size)) => log!("saved {p} ({size} bytes) in {} ms", (clock::now() - start) / 10_000),
                 Err(e) => log!("save failed: {e}"),
             }
             let boxed = Box::into_raw(Box::new(result));
@@ -251,13 +249,13 @@ impl App {
         });
     }
 
-    fn on_clip_saved(&mut self, result: Result<(PathBuf, u64), String>) {
+    fn on_clip_saved(&mut self, result: Result<(String, u64), String>) {
         match result {
             Ok((path, size)) => {
                 if self.cfg.save_sound {
                     util::play_saved_sound();
                 }
-                let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                let name = path::file_name(&path).to_string();
                 // Integer math on purpose: float formatting costs ~5 KB in the tiny build.
                 let tenths = (size + 50_000) / 100_000;
                 self.notify("Clip saved", &format!("{name} ({}.{} MB)", tenths / 10, tenths % 10));
@@ -273,10 +271,10 @@ impl App {
 
 /// Open the clips folder, optionally with a file selected. Called without the
 /// app borrowed, since ShellExecute can pump messages.
-fn open_folder(folder: &str, select: Option<&PathBuf>) {
-    let _ = std::fs::create_dir_all(folder);
+fn open_folder(folder: &str, select: Option<&String>) {
+    let _ = fs::create_dir_all(folder);
     let (file, params) = match select {
-        Some(p) => (wide("explorer.exe"), wide(&format!("/select,\"{}\"", p.display()))),
+        Some(p) => (wide("explorer.exe"), wide(&format!("/select,\"{p}\""))),
         None => (wide(folder), vec![0]),
     };
     unsafe {
@@ -287,17 +285,17 @@ fn open_folder(folder: &str, select: Option<&PathBuf>) {
 impl App {
     /// Apply settings from the settings window.
     fn apply(&mut self, new: Config) {
-        let old = std::mem::replace(&mut self.cfg, new);
+        let old = core::mem::replace(&mut self.cfg, new);
         if let Err(e) = self.cfg.save() {
             log!("couldn't save config: {e}");
         }
         if old.capture_settings_differ(&self.cfg) {
             log!("capture settings changed, restarting pipeline");
             self.pipeline = None; // joins the old threads first
-            self.ring.lock().unwrap().clear();
+            self.ring.lock().clear();
             self.pipeline = Some(Pipeline::start(&self.cfg, self.ring.clone()));
         } else if old.replay_seconds != self.cfg.replay_seconds {
-            self.ring.lock().unwrap().set_keep(self.cfg.replay_seconds);
+            self.ring.lock().set_keep(self.cfg.replay_seconds);
         }
         if (old.hotkey_modifiers, old.hotkey_key) != (self.cfg.hotkey_modifiers, self.cfg.hotkey_key) || !self.hotkey_ok
         {
@@ -358,7 +356,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_CLIP_SAVED => {
-            let result = unsafe { Box::from_raw(lparam.0 as *mut Result<(PathBuf, u64), String>) };
+            let result = unsafe { Box::from_raw(lparam.0 as *mut Result<(String, u64), String>) };
             with_app(|a| a.on_clip_saved(*result));
             LRESULT(0)
         }

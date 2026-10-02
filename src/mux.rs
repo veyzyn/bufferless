@@ -1,9 +1,10 @@
 //! Minimal MP4 writer for H.264 + AAC-LC. Writes the moov box before mdat
 //! ("faststart") so clips start playing immediately when uploaded somewhere.
 
-use std::fs::File;
-use std::io::{self, BufWriter, Write};
-use std::path::Path;
+use crate::prelude::*;
+
+use crate::rt::fs::{BufWriter, File};
+use crate::rt::{self, error};
 
 use crate::clock::SECOND;
 use crate::ring::Clip;
@@ -56,7 +57,7 @@ fn avcc_size(annexb: &[u8]) -> u32 {
     nal_units(annexb).filter(|n| keep_nal(n)).map(|n| 4 + n.len() as u32).sum()
 }
 
-fn write_avcc(annexb: &[u8], w: &mut impl Write) -> io::Result<()> {
+fn write_avcc(annexb: &[u8], w: &mut BufWriter) -> rt::Result<()> {
     for nal in nal_units(annexb).filter(|n| keep_nal(n)) {
         w.write_all(&(nal.len() as u32).to_be_bytes())?;
         w.write_all(nal)?;
@@ -425,8 +426,8 @@ fn to_scale(t: i64, scale: u32) -> u64 {
     (t.max(0) as i128 * scale as i128 / SECOND as i128) as u64
 }
 
-pub fn write_mp4(path: &Path, clip: &Clip) -> io::Result<u64> {
-    let invalid = |msg: &str| io::Error::new(io::ErrorKind::InvalidData, msg.to_string());
+pub fn write_mp4(path: &str, clip: &Clip) -> rt::Result<u64> {
+    let invalid = error;
     let (sps, pps) = find_param_sets(clip).ok_or_else(|| invalid("no SPS/PPS in stream"))?;
     if sps.len() < 4 {
         return Err(invalid("bad SPS"));
@@ -521,7 +522,7 @@ pub fn write_mp4(path: &Path, clip: &Clip) -> io::Result<u64> {
     let moov = write_moov(clip, &sps, &pps, &video, audio.as_ref());
     debug_assert_eq!(moov.len() as u64, moov_len);
 
-    let mut w = BufWriter::with_capacity(1 << 20, File::create(path)?);
+    let mut w = BufWriter::new(File::create(path)?, 1 << 20);
     w.write_all(&ftyp.buf)?;
     w.write_all(&moov)?;
     w.write_all(&1u32.to_be_bytes())?;

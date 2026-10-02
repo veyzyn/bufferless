@@ -2,7 +2,9 @@
 //! NVENC / AMF / QuickSync, so this works on any vendor's GPU. Input frames
 //! are NV12 D3D11 textures, so pixels never leave the GPU.
 
-use std::mem::ManuallyDrop;
+use crate::prelude::*;
+
+use core::mem::ManuallyDrop;
 
 use windows::Win32::Foundation::LUID;
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
@@ -46,10 +48,10 @@ fn find_encoders(adapter: LUID) -> Result<Vec<IMFActivate>> {
         let mut attrs = None;
         MFCreateAttributes(&mut attrs, 1)?;
         let attrs = attrs.unwrap();
-        let luid_bytes = std::slice::from_raw_parts(&adapter as *const LUID as *const u8, size_of::<LUID>());
+        let luid_bytes = core::slice::from_raw_parts(&adapter as *const LUID as *const u8, size_of::<LUID>());
         attrs.SetBlob(&MFT_ENUM_ADAPTER_LUID, luid_bytes)?;
 
-        let mut list: *mut Option<IMFActivate> = std::ptr::null_mut();
+        let mut list: *mut Option<IMFActivate> = core::ptr::null_mut();
         let mut count = 0u32;
         MFTEnum2(
             MFT_CATEGORY_VIDEO_ENCODER,
@@ -62,7 +64,7 @@ fn find_encoders(adapter: LUID) -> Result<Vec<IMFActivate>> {
         )?;
         let mut out = Vec::new();
         for i in 0..count as usize {
-            if let Some(a) = std::ptr::read(list.add(i)) {
+            if let Some(a) = core::ptr::read(list.add(i)) {
                 out.push(a);
             }
         }
@@ -288,10 +290,10 @@ impl H264Encoder {
             let pts = sample.GetSampleTime().unwrap_or(0);
             let key = sample.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;
             let buffer = sample.ConvertToContiguousBuffer()?;
-            let mut ptr = std::ptr::null_mut();
+            let mut ptr = core::ptr::null_mut();
             let mut len = 0u32;
             buffer.Lock(&mut ptr, None, Some(&mut len))?;
-            let data = std::slice::from_raw_parts(ptr, len as usize).to_vec();
+            let data = core::slice::from_raw_parts(ptr, len as usize).to_vec();
             buffer.Unlock()?;
             on_packet(Packet { pts, key, data });
         }

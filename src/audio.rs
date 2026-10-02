@@ -2,11 +2,14 @@
 //! shared clock and encoded to AAC-LC. Every WASAPI packet carries a QPC
 //! timestamp, which is what keeps audio in sync with video.
 
-use std::collections::VecDeque;
-use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use crate::prelude::*;
+
+use alloc::collections::VecDeque;
+use alloc::sync::Arc;
+use core::mem::ManuallyDrop;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+use crate::rt::Mutex;
 
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::*;
@@ -154,7 +157,7 @@ impl Source {
     fn read(&mut self, origin: i64) -> Result<()> {
         unsafe {
             while self.capture.GetNextPacketSize()? > 0 {
-                let mut data = std::ptr::null_mut();
+                let mut data = core::ptr::null_mut();
                 let mut frames = 0u32;
                 let mut flags = 0u32;
                 let mut qpc = 0u64;
@@ -166,7 +169,7 @@ impl Source {
                 let samples: &[f32] = if silent || data.is_null() {
                     &[]
                 } else {
-                    std::slice::from_raw_parts(data as *const f32, frames as usize * CH)
+                    core::slice::from_raw_parts(data as *const f32, frames as usize * CH)
                 };
 
                 let mut skip = 0usize;
@@ -175,7 +178,7 @@ impl Source {
                 } else {
                     let gap = idx - self.end();
                     if gap > RESYNC {
-                        self.fifo.extend(std::iter::repeat_n(0.0, gap as usize * CH));
+                        self.fifo.extend(core::iter::repeat_n(0.0, gap as usize * CH));
                     } else if gap < -RESYNC {
                         // Overlap: drop the part of this packet we already have.
                         skip = ((-gap) as usize).min(frames as usize);
@@ -264,9 +267,9 @@ impl AacEncoder {
         unsafe {
             let bytes = pcm.len() * 2;
             let buffer = MFCreateMemoryBuffer(bytes as u32)?;
-            let mut ptr = std::ptr::null_mut();
+            let mut ptr = core::ptr::null_mut();
             buffer.Lock(&mut ptr, None, None)?;
-            std::ptr::copy_nonoverlapping(pcm.as_ptr() as *const u8, ptr, bytes);
+            core::ptr::copy_nonoverlapping(pcm.as_ptr() as *const u8, ptr, bytes);
             buffer.Unlock()?;
             buffer.SetCurrentLength(bytes as u32)?;
             let sample = MFCreateSample()?;
@@ -296,10 +299,10 @@ impl AacEncoder {
                 let Some(sample) = sample else { continue };
                 let pts = sample.GetSampleTime()?;
                 let buffer = sample.ConvertToContiguousBuffer()?;
-                let mut ptr = std::ptr::null_mut();
+                let mut ptr = core::ptr::null_mut();
                 let mut len = 0u32;
                 buffer.Lock(&mut ptr, None, Some(&mut len))?;
-                let data = std::slice::from_raw_parts(ptr, len as usize).to_vec();
+                let data = core::slice::from_raw_parts(ptr, len as usize).to_vec();
                 buffer.Unlock()?;
                 if !data.is_empty() {
                     on_packet(Packet { pts, key: true, data });
@@ -326,7 +329,7 @@ pub fn run(cfg: AudioConfig, ring: Arc<Mutex<Ring>>, stop: Arc<AtomicBool>) {
                     if stop.load(Ordering::Relaxed) {
                         break;
                     }
-                    std::thread::sleep(Duration::from_millis(100));
+                    crate::rt::thread::sleep_ms(100);
                 }
             }
         }
@@ -361,7 +364,7 @@ fn session(cfg: &AudioConfig, ring: &Mutex<Ring>, stop: &AtomicBool, origin: i64
 
     let mut mix = vec![0f32; FRAME * CH];
     let mut pcm = vec![0i16; FRAME * CH];
-    let mut on_packet = |p| ring.lock().unwrap().push_audio(p);
+    let mut on_packet = |p| ring.lock().push_audio(p);
     let mut last_device_check = clock::now();
 
     while !stop.load(Ordering::Relaxed) {
@@ -403,7 +406,7 @@ fn session(cfg: &AudioConfig, ring: &Mutex<Ring>, stop: &AtomicBool, origin: i64
             encoder.encode(&pcm, pts, &mut on_packet)?;
             *pos += FRAME as i64;
         }
-        std::thread::sleep(Duration::from_millis(10));
+        crate::rt::thread::sleep_ms(10);
     }
     Ok(())
 }

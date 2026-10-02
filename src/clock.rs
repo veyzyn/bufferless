@@ -1,7 +1,7 @@
 //! Shared QPC-based clock. All timestamps in the app are in 100ns units on this
 //! timeline, which is the same timeline WASAPI reports device positions on.
 
-use std::sync::OnceLock;
+use crate::rt::OnceLock;
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
 pub const SECOND: i64 = 10_000_000;

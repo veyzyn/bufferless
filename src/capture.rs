@@ -2,10 +2,13 @@
 //! hardware encoder -> ring buffer. Runs on its own thread at a fixed frame
 //! rate; if the screen hasn't changed we just re-encode the last frame.
 
-use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use crate::prelude::*;
+
+use alloc::sync::Arc;
+use core::mem::ManuallyDrop;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+use crate::rt::Mutex;
 
 use windows::Win32::Foundation::{E_ACCESSDENIED, HMODULE, LUID, RECT};
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_UNKNOWN, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_11_1};
@@ -173,7 +176,7 @@ impl Converter {
                 &self.processor,
                 &self.output_views[output],
                 0,
-                std::slice::from_ref(&stream),
+                core::slice::from_ref(&stream),
             );
             ManuallyDrop::drop(&mut stream.pInputSurface);
             r
@@ -236,13 +239,13 @@ pub fn run(cfg: VideoConfig, ring: Arc<Mutex<Ring>>, stop: Arc<AtomicBool>, stat
             Ok(()) => break,
             Err(e) => {
                 log!("video: session ended: {e}");
-                *status.lock().unwrap() = format!("Video error: {}", e.message());
+                *status.lock() = format!("Video error: {}", e.message());
                 // Back off a bit so a persistent failure doesn't spin.
                 for _ in 0..20 {
                     if stop.load(Ordering::Relaxed) {
                         break;
                     }
-                    std::thread::sleep(Duration::from_millis(100));
+                    crate::rt::thread::sleep_ms(100);
                 }
             }
         }
@@ -304,14 +307,14 @@ fn session(cfg: &VideoConfig, ring: &Mutex<Ring>, stop: &AtomicBool, status: &Mu
     let settings = EncoderSettings { width: out_w, height: out_h, fps: cfg.fps, bitrate: cfg.bitrate };
     let mut encoder = H264Encoder::new(&device, adapter_luid, &settings)?;
 
-    ring.lock().unwrap().set_format(VideoFormat {
+    ring.lock().set_format(VideoFormat {
         width: out_w,
         height: out_h,
         fps: cfg.fps,
         seq_header: encoder.sequence_header().unwrap_or_default(),
     });
     log!("video: capturing {src_w}x{src_h} -> {out_w}x{out_h} @ {} fps, {} kbps", cfg.fps, cfg.bitrate / 1000);
-    *status.lock().unwrap() = format!("Recording {out_h}p{} with {}", cfg.fps, encoder.name);
+    *status.lock() = format!("Recording {out_h}p{} with {}", cfg.fps, encoder.name);
 
     let timer =
         unsafe { CreateWaitableTimerExW(None, None, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS.0)? };
@@ -323,8 +326,8 @@ fn session(cfg: &VideoConfig, ring: &Mutex<Ring>, stop: &AtomicBool, status: &Mu
     let mut dropped = 0u64;
     let mut last_dupl_attempt = 0i64;
 
-    let mut on_packet = |p| ring.lock().unwrap().push_video(p);
-    let mut on_seq = |s| ring.lock().unwrap().update_seq_header(s);
+    let mut on_packet = |p| ring.lock().push_video(p);
+    let mut on_seq = |s| ring.lock().update_seq_header(s);
 
     while !stop.load(Ordering::Relaxed) {
         // 1. Grab the newest desktop image if there is one.

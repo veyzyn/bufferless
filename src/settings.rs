@@ -1,6 +1,8 @@
 //! Settings window built from plain Win32 controls.
 
-use std::cell::RefCell;
+use crate::prelude::*;
+
+use core::cell::RefCell;
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::*;
@@ -19,6 +21,7 @@ use crate::app;
 use crate::audio::{self, DeviceInfo};
 use crate::capture::{self, MonitorInfo};
 use crate::config::Config;
+use crate::rt::UiCell;
 use crate::util::{wide, window_text};
 
 const CLASS: PCWSTR = w!("BufferlessSettings");
@@ -62,9 +65,7 @@ struct Settings {
     heading_font: HFONT,
 }
 
-thread_local! {
-    static STATE: RefCell<Option<Settings>> = const { RefCell::new(None) };
-}
+static STATE: UiCell<RefCell<Option<Settings>>> = UiCell::new(RefCell::new(None));
 
 pub fn window() -> Option<HWND> {
     STATE.with(|s| s.borrow().as_ref().map(|s| s.hwnd))

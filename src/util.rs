@@ -1,6 +1,8 @@
 //! Small Win32 helpers shared by the tray app and the settings window.
 
-use std::sync::OnceLock;
+use crate::prelude::*;
+
+use crate::rt::OnceLock;
 
 use windows::Win32::Foundation::{CloseHandle, HWND};
 use windows::Win32::Graphics::Gdi::*;
@@ -54,11 +56,11 @@ pub fn icon_from_rgba(size: u32, rgba: &[u8]) -> HICON {
             },
             ..Default::default()
         };
-        let mut bits = std::ptr::null_mut();
+        let mut bits = core::ptr::null_mut();
         let Ok(color) = CreateDIBSection(None, &bmi, DIB_RGB_COLORS, &mut bits, None, 0) else {
             return LoadIconW(None, IDI_APPLICATION).unwrap_or_default();
         };
-        let dst = std::slice::from_raw_parts_mut(bits as *mut u8, rgba.len());
+        let dst = core::slice::from_raw_parts_mut(bits as *mut u8, rgba.len());
         for (d, s) in dst.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
             d.copy_from_slice(&[s[2], s[1], s[0], s[3]]); // RGBA -> BGRA
         }
@@ -108,7 +110,7 @@ pub fn play_saved_sound() {
                 let t = i as f32 / RATE as f32;
                 // Quick fade in/out so it doesn't click.
                 let env = (i.min(n - i) as f32 / (RATE as f32 * 0.008)).min(1.0);
-                let v = (t * freq * std::f32::consts::TAU).sin() * env * 0.25;
+                let v = crate::rt::math::sin(t * freq * core::f32::consts::TAU) * env * 0.25;
                 pcm.push((v * i16::MAX as f32) as i16);
             }
         }
@@ -162,8 +164,7 @@ pub fn foreground_app_name() -> String {
             let _ = CloseHandle(process);
             r.ok()?;
             let path = String::from_utf16_lossy(&buf[..len as usize]);
-            let stem = std::path::Path::new(&path).file_stem()?.to_string_lossy().into_owned();
-            Some(stem)
+            Some(crate::rt::path::file_stem(&path).to_string())
         })();
         match name.as_deref() {
             None | Some("explorer") | Some("bufferless") => "Desktop".into(),
@@ -197,8 +198,7 @@ pub fn set_autostart(enable: bool) {
     let key = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
     unsafe {
         if enable {
-            let Ok(exe) = std::env::current_exe() else { return };
-            let value = wide(&format!("\"{}\"", exe.display()));
+            let value = wide(&format!("\"{}\"", crate::rt::path::current_exe()));
             let _ = RegSetKeyValueW(
                 HKEY_CURRENT_USER,
                 key,

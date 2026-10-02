@@ -2,6 +2,9 @@
 //! rasterized in software. Shared by build.rs, which bakes the exe icon, and
 //! the app, which draws the tray icon at runtime. Geometry is in a 64x64 space.
 
+// Self-contained (no crate imports): build.rs includes this file too.
+use alloc::vec::Vec;
+
 /// (center x, radius, opacity) for each circle, back to front.
 const CIRCLES: [(f32, f32, f32); 3] = [(21.0, 9.0, 0.16), (29.0, 10.2, 0.38), (38.5, 11.5, 1.0)];
 const CIRCLE_Y: f32 = 32.0;
@@ -15,6 +18,11 @@ const SUPERSAMPLE: u32 = 4;
 
 /// Premultiplied RGBA.
 type Color = [f32; 4];
+
+/// `f32::round` needs std; values here are never negative.
+fn round(x: f32) -> f32 {
+    (x + 0.5) as i64 as f32
+}
 
 fn over(dst: Color, rgb: [f32; 3], alpha: f32) -> Color {
     let k = 1.0 - alpha;
@@ -30,7 +38,8 @@ fn in_rounded_rect(u: f32, v: f32, inset: f32) -> bool {
 
 fn circles(mut c: Color, u: f32, v: f32, rgb: [f32; 3]) -> Color {
     for (cx, r, opacity) in CIRCLES {
-        if (u - cx).powi(2) + (v - CIRCLE_Y).powi(2) <= r * r {
+        let (dx, dy) = (u - cx, v - CIRCLE_Y);
+        if dx * dx + dy * dy <= r * r {
             c = over(c, rgb, opacity);
         }
     }
@@ -56,8 +65,8 @@ fn render(size: u32, origin: f32, span: f32, scene: impl Fn(f32, f32) -> Color) 
                 }
             }
             let a = acc[3] / n;
-            let unpremul = |v: f32| if a > 0.0 { (v / n / a * 255.0).round().clamp(0.0, 255.0) as u8 } else { 0 };
-            out.extend_from_slice(&[unpremul(acc[0]), unpremul(acc[1]), unpremul(acc[2]), (a * 255.0).round() as u8]);
+            let unpremul = |v: f32| if a > 0.0 { round(v / n / a * 255.0).clamp(0.0, 255.0) as u8 } else { 0 };
+            out.extend_from_slice(&[unpremul(acc[0]), unpremul(acc[1]), unpremul(acc[2]), round(a * 255.0) as u8]);
         }
     }
     out
@@ -70,7 +79,7 @@ pub fn tile(size: u32) -> Vec<u8> {
             return [0.0; 4];
         }
         let t = ((u + v) / 128.0).clamp(0.0, 1.0);
-        let rgb = std::array::from_fn(|i| TILE_TOP_LEFT[i] + (TILE_BOTTOM_RIGHT[i] - TILE_TOP_LEFT[i]) * t);
+        let rgb = core::array::from_fn(|i| TILE_TOP_LEFT[i] + (TILE_BOTTOM_RIGHT[i] - TILE_TOP_LEFT[i]) * t);
         let mut c = over([0.0; 4], rgb, 1.0);
         // Faint inner edge highlight, like light catching the tile's rim.
         if !in_rounded_rect(u, v, 1.0) {

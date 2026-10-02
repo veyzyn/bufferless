@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use crate::prelude::*;
+use crate::rt::{self, fs, path};
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{MOD_ALT, VK_F10};
 use windows::Win32::UI::Shell::{FOLDERID_RoamingAppData, FOLDERID_Videos, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
@@ -25,18 +26,18 @@ pub struct Config {
     pub start_with_windows: bool,
 }
 
-fn known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
+fn known_folder(id: &windows::core::GUID) -> Option<String> {
     unsafe {
         let p = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).ok()?;
         let s = p.to_string().ok();
         windows::Win32::System::Com::CoTaskMemFree(Some(p.0 as _));
-        s.map(PathBuf::from)
+        s
     }
 }
 
 impl Default for Config {
     fn default() -> Self {
-        let videos = known_folder(&FOLDERID_Videos).unwrap_or_else(|| PathBuf::from("."));
+        let videos = known_folder(&FOLDERID_Videos).unwrap_or_else(|| ".".into());
         Self {
             hotkey_modifiers: MOD_ALT.0,
             hotkey_key: VK_F10.0 as u32,
@@ -49,7 +50,7 @@ impl Default for Config {
             microphone: false,
             microphone_device: String::new(),
             microphone_volume: 100,
-            save_folder: videos.join("Bufferless").to_string_lossy().into_owned(),
+            save_folder: path::join(&videos, "Bufferless"),
             save_sound: true,
             start_with_windows: false,
         }
@@ -57,26 +58,26 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn dir() -> PathBuf {
-        known_folder(&FOLDERID_RoamingAppData).unwrap_or_else(|| PathBuf::from(".")).join("bufferless")
+    pub fn dir() -> String {
+        path::join(&known_folder(&FOLDERID_RoamingAppData).unwrap_or_else(|| ".".into()), "bufferless")
     }
 
-    fn path() -> PathBuf {
-        Self::dir().join("config.toml")
+    fn path() -> String {
+        path::join(&Self::dir(), "config.toml")
     }
 
     pub fn load() -> Self {
         let mut cfg = Self::default();
-        if let Ok(text) = std::fs::read_to_string(Self::path()) {
+        if let Some(text) = fs::read_to_string(&Self::path()) {
             cfg.parse(&text);
         }
         cfg.sanitize();
         cfg
     }
 
-    pub fn save(&self) -> std::io::Result<()> {
-        std::fs::create_dir_all(Self::dir())?;
-        std::fs::write(Self::path(), self.to_toml())
+    pub fn save(&self) -> rt::Result<()> {
+        fs::create_dir_all(&Self::dir())?;
+        fs::write(&Self::path(), self.to_toml().as_bytes())
     }
 
     /// Read `key = value` lines (the flat subset of TOML this file uses).

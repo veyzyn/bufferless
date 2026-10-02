@@ -3,8 +3,9 @@
     Builds the smallest possible bufferless.exe into dist\.
 
 .DESCRIPTION
-    Uses nightly Rust to rebuild the standard library with size optimizations
-    and the immediate-abort panic strategy, then packs the result with UPX.
+    Uses nightly Rust to rebuild core and alloc with size optimizations and the
+    immediate-abort panic strategy, links without any C runtime, then packs
+    the result with UPX.
     The regular `cargo build --release` on stable is unaffected.
 
 .PARAMETER NoUpx
@@ -25,14 +26,15 @@ if (-not (rustup component list --toolchain nightly --installed | Select-String 
     if ($LASTEXITCODE) { throw 'Could not install rust-src (is the nightly toolchain installed?)' }
 }
 
-# RUSTFLAGS replaces .cargo\config.toml's rustflags, so the hybrid CRT flags are
-# repeated here. location-detail/fmt-debug drop panic locations and Debug output.
+# On this branch the app is #![no_std] with its own entry point (see src/rt.rs),
+# so nothing from the C runtime is linked at all. RUSTFLAGS replaces
+# .cargo\config.toml's rustflags. location-detail/fmt-debug drop panic
+# locations and Debug output.
 $saved = @{ RUSTFLAGS = $env:RUSTFLAGS; CARGO_PROFILE_RELEASE_OPT_LEVEL = $env:CARGO_PROFILE_RELEASE_OPT_LEVEL }
 try {
     $env:RUSTFLAGS = @(
-        '-C target-feature=+crt-static'
-        '-C link-arg=/NODEFAULTLIB:libucrt.lib'
-        '-C link-arg=/DEFAULTLIB:ucrt.lib'
+        '-C link-arg=/NODEFAULTLIB'
+        '-C link-arg=/ENTRY:bufferless_start'
         '-Zunstable-options -Cpanic=immediate-abort'
         '-Zlocation-detail=none'
         '-Zfmt-debug=none'
@@ -47,7 +49,7 @@ try {
     $env:CARGO_PROFILE_RELEASE_OPT_LEVEL = 'z'
     cargo +nightly build --release --manifest-path (Join-Path $root 'Cargo.toml') `
         --target $target --target-dir $targetDir `
-        -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size
+        -Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem,optimize_for_size
     if ($LASTEXITCODE) { throw 'cargo build failed' }
 }
 finally {

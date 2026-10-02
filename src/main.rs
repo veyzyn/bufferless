@@ -1,4 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// No std and no C runtime: see rt.rs. Tests still build against std.
+#![cfg_attr(not(test), no_std, no_main)]
+
+// format!/vec! come from alloc in the no_std build (std provides them in tests).
+#[cfg_attr(not(test), macro_use)]
+extern crate alloc;
 
 mod app;
 mod audio;
@@ -10,7 +16,9 @@ mod icon;
 mod logging;
 mod mux;
 mod pipeline;
+mod prelude;
 mod ring;
+mod rt;
 mod settings;
 mod util;
 
@@ -52,9 +60,9 @@ fn main() {
         });
 
         let dir = Config::dir();
-        let _ = std::fs::create_dir_all(&dir);
-        let first_run = !dir.join("config.toml").exists();
-        logging::init(&dir.join("bufferless.log"));
+        let _ = rt::fs::create_dir_all(&dir);
+        let first_run = !rt::fs::exists(&rt::path::join(&dir, "config.toml"));
+        logging::init(&rt::path::join(&dir, "bufferless.log"));
         log!("bufferless {} starting", env!("CARGO_PKG_VERSION"));
 
         app::run(first_run);
