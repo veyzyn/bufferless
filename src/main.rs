@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-// No std and no C runtime: see rt.rs. Tests still build against std.
-#![cfg_attr(not(test), no_std, no_main)]
+// The `nostd` feature drops Rust's std (and, in build-tiny.ps1, the C
+// runtime too): see rt.rs. Default builds and tests use std as usual; the
+// code goes through rt's small wrappers either way.
+#![cfg_attr(all(feature = "nostd", not(test)), no_std, no_main)]
 
-// format!/vec! come from alloc in the no_std build (std provides them in tests).
-#[cfg_attr(not(test), macro_use)]
+// Without std, format!/vec! come from alloc.
+#[cfg_attr(all(feature = "nostd", not(test)), macro_use)]
 extern crate alloc;
 
 mod app;

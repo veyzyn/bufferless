@@ -1,7 +1,8 @@
-//! A tiny runtime replacing the parts of Rust's std this app used, built
-//! directly on Win32. Together with `#![no_std]` this lets the exe drop std
-//! and the C runtime entirely. The process entry point, allocator and panic
-//! handler live in `start` and are left out of test builds, which use std.
+//! A tiny runtime replacing the parts of Rust's std this app uses, built
+//! directly on Win32. The app always goes through these wrappers; with the
+//! `nostd` feature the `start` module also supplies the process entry point,
+//! allocator and panic handler, so the exe can drop std and the C runtime
+//! entirely. Tests always use std.
 
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -353,7 +354,7 @@ pub mod math {
 // Process entry, allocator, panic handler and the bits the C runtime used to
 // provide to compiled code.
 
-#[cfg(not(test))]
+#[cfg(all(feature = "nostd", not(test)))]
 mod start {
     use core::alloc::{GlobalAlloc, Layout};
 

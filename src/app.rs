@@ -95,6 +95,11 @@ pub fn run(first_run: bool) {
         .unwrap();
 
         let cfg = Config::load();
+        if cfg.start_with_windows {
+            // Re-point the startup entry at this exe in case it was moved or
+            // replaced by a newer build somewhere else.
+            util::set_autostart(true);
+        }
         if first_run {
             let _ = cfg.save();
         }

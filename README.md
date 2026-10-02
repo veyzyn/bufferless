@@ -4,7 +4,7 @@ A lightweight always-on replay buffer for Windows. Press a hotkey and the last
 N seconds of your screen (with system audio and optionally your mic) are saved
 as an MP4, like NVIDIA Instant Replay without the overlay.
 
-- Single ~600 KB exe, no runtime and no DLLs beyond what ships with Windows
+- Single exe (300 KB, or 55 KB packed), no runtime and no DLLs beyond what ships with Windows
 - Works on NVIDIA, AMD and Intel GPUs (hardware H.264 through Media Foundation)
 - Saving a clip takes milliseconds because nothing is re-encoded
 
@@ -62,16 +62,22 @@ Requires Rust (MSVC toolchain) on Windows 10 or 11.
 cargo build --release
 ```
 
-On this branch the app is `#![no_std]`: `src/rt.rs` replaces the parts of std it
-used (threads, a mutex, files, the allocator, the process entry point) with direct
-Win32 calls. Normal builds still link the C runtime; the tiny build doesn't.
+The same code builds three variants:
 
-For the smallest possible exe (about 56 KB), run `.\build-tiny.ps1`. It needs a
-nightly toolchain and [UPX](https://upx.github.io/) (`winget install UPX.UPX`),
-rebuilds `core` and `alloc` optimized for size, links no C runtime at all, and
-writes `dist\bufferless.exe`. UPX-packed executables are sometimes flagged by
-antivirus heuristics, so pass `-NoUpx` for builds you share (about 107 KB). The tiny build also disables
-ASLR, another reason to keep it for personal use.
+| Variant | Size | How | Notes |
+| --- | --- | --- | --- |
+| `bufferless.exe` | ~300 KB | `cargo build --release` | Standard build. The safest bet with antivirus. |
+| `bufferless-small.exe` | ~107 KB | `.\build-tiny.ps1` | No Rust std and no C runtime. |
+| `bufferless-tiny.exe` | ~55 KB | `.\build-tiny.ps1` | The small build packed with UPX. Packed exes are often flagged by antivirus heuristics. |
+
+The small builds use the `nostd` feature: `src/rt.rs` provides the few things the
+app needs from std (threads, a mutex, files, the allocator, the process entry
+point) as thin Win32 wrappers, which every build goes through. `build-tiny.ps1`
+needs a nightly toolchain and [UPX](https://upx.github.io/)
+(`winget install UPX.UPX`); pass `-NoUpx` to skip the packed one.
+
+GitHub Actions builds all three on every push (download them from the run's
+artifacts) and attaches them to a release when a `v*` tag is pushed.
 
 ## Known limitations
 

@@ -1,0 +1,58 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write # to publish releases from tags
+    env:
+      # Pin a known-good nightly here if a newer one breaks the tiny build.
+      NIGHTLY: nightly
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install toolchains and UPX
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup toolchain install ${{ env.NIGHTLY }} --profile minimal --component rust-src
+          choco install upx --no-progress -y
+
+      - name: Test
+        run: cargo test
+
+      - name: Build standard (stable, std)
+        run: cargo build --release
+
+      - name: Build small and tiny (nightly, no std, no CRT)
+        shell: pwsh
+        run: ./build-tiny.ps1 -Toolchain ${{ env.NIGHTLY }}
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          Copy-Item target/release/bufferless.exe dist/bufferless.exe
+          Get-ChildItem dist/*.exe | Format-Table Name, Length -AutoSize
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bufferless
+          path: dist/*.exe
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create ${{ github.ref_name }} dist/bufferless.exe dist/bufferless-small.exe dist/bufferless-tiny.exe
+          --title "Bufferless ${{ github.ref_name }}" --generate-notes
+          --notes "Three builds of the same app, pick one:
+          **bufferless.exe** is the standard build and the safest bet with antivirus.
+          **bufferless-small.exe** is the same app without Rust's std or the C runtime (~107 KB).
+          **bufferless-tiny.exe** is the small build packed with UPX (~55 KB). Packed exes are often flagged by antivirus heuristics."
