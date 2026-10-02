@@ -14,8 +14,8 @@ use windows::core::{PCWSTR, w};
 use crate::config::Config;
 use crate::pipeline::Pipeline;
 use crate::ring::Ring;
-use crate::util::{copy_wide, hotkey_name, make_icon, wide};
-use crate::{log, mux, settings, util};
+use crate::util::{copy_wide, hotkey_name, wide};
+use crate::{icon, log, mux, settings, util};
 
 const WM_TRAY: u32 = WM_APP + 1;
 const WM_CLIP_SAVED: u32 = WM_APP + 2;
@@ -31,8 +31,6 @@ const CMD_OPEN_FOLDER: usize = 101;
 const CMD_SETTINGS: usize = 102;
 const CMD_QUIT: usize = 103;
 
-const RED: (u8, u8, u8) = (232, 64, 64);
-const GRAY: (u8, u8, u8) = (140, 140, 140);
 
 struct App {
     hwnd: HWND,
@@ -55,8 +53,15 @@ fn with_app<R>(f: impl FnOnce(&mut App) -> R) -> Option<R> {
     APP.with(|a| a.borrow_mut().as_mut().map(f))
 }
 
-pub fn app_icon() -> HICON {
-    with_app(|a| a.icon_ok).unwrap_or_default()
+/// Tray icons for the normal and error states, matched to the taskbar theme:
+/// white on a dark taskbar, near-black on a light one. Errors dim the mark.
+fn tray_icons() -> (HICON, HICON) {
+    let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16) as u32;
+    let rgb = if util::taskbar_is_light() { [0x1f, 0x1f, 0x1f] } else { [0xff, 0xff, 0xff] };
+    (
+        util::icon_from_rgba(size, &icon::glyph(size, rgb, 1.0)),
+        util::icon_from_rgba(size, &icon::glyph(size, rgb, 0.4)),
+    )
 }
 
 pub fn current_config() -> Config {
@@ -95,15 +100,15 @@ pub fn run(first_run: bool) {
         if first_run {
             let _ = cfg.save();
         }
-        let icon_size = GetSystemMetrics(SM_CXSMICON).max(16);
+        let (icon_ok, icon_error) = tray_icons();
         let ring = Arc::new(Mutex::new(Ring::new(cfg.replay_seconds)));
         let pipeline = Pipeline::start(&cfg, ring.clone());
         let app = App {
             hwnd,
             ring,
             pipeline: Some(pipeline),
-            icon_ok: make_icon(icon_size, RED),
-            icon_error: make_icon(icon_size, GRAY),
+            icon_ok,
+            icon_error,
             showing_error: false,
             taskbar_created: RegisterWindowMessageW(w!("TaskbarCreated")),
             hotkey_ok: false,
@@ -362,6 +367,19 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_TIMER if wparam.0 == TIMER_STATUS => {
             with_app(|a| a.refresh_tray());
             LRESULT(0)
+        }
+        WM_SETTINGCHANGE => {
+            // Light/dark switches arrive as "ImmersiveColorSet"; just redraw.
+            with_app(|a| {
+                let (ok, error) = tray_icons();
+                unsafe {
+                    let _ = DestroyIcon(a.icon_ok);
+                    let _ = DestroyIcon(a.icon_error);
+                }
+                (a.icon_ok, a.icon_error) = (ok, error);
+                a.refresh_tray();
+            });
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         WM_DESTROY => {
             unsafe { PostQuitMessage(0) };

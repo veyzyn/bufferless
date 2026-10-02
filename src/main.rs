@@ -6,6 +6,8 @@ mod capture;
 mod clock;
 mod config;
 mod encoder;
+#[allow(dead_code)] // tile() is only used by build.rs, which bakes it into the exe
+mod icon;
 mod logging;
 mod mux;
 mod pipeline;

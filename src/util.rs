@@ -5,7 +5,10 @@ use std::sync::OnceLock;
 use windows::Win32::Foundation::{CloseHandle, HWND};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::Media::Audio::{PlaySoundW, SND_ALIAS, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
-use windows::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegDeleteKeyValueW, RegSetKeyValueW};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Registry::{
+    HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_DWORD, RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW,
+};
 use windows::Win32::System::SystemInformation::GetLocalTime;
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
@@ -37,14 +40,14 @@ pub fn window_text(hwnd: HWND) -> String {
     }
 }
 
-/// The classic "record" glyph: a ring with a dot, drawn with anti-aliasing.
-pub fn make_icon(size: i32, rgb: (u8, u8, u8)) -> HICON {
+/// Build an icon from straight-alpha RGBA pixels.
+pub fn icon_from_rgba(size: u32, rgba: &[u8]) -> HICON {
     unsafe {
         let bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth: size,
-                biHeight: -size,
+                biWidth: size as i32,
+                biHeight: -(size as i32),
                 biPlanes: 1,
                 biBitCount: 32,
                 biCompression: BI_RGB.0,
@@ -56,26 +59,45 @@ pub fn make_icon(size: i32, rgb: (u8, u8, u8)) -> HICON {
         let Ok(color) = CreateDIBSection(None, &bmi, DIB_RGB_COLORS, &mut bits, None, 0) else {
             return LoadIconW(None, IDI_APPLICATION).unwrap_or_default();
         };
-        let pixels = std::slice::from_raw_parts_mut(bits as *mut u32, (size * size) as usize);
-        let s = size as f32;
-        let c = s / 2.0;
-        let (ring_outer, ring_inner, dot) = (s * 0.47, s * 0.36, s * 0.25);
-        for y in 0..size {
-            for x in 0..size {
-                let d = ((x as f32 + 0.5 - c).powi(2) + (y as f32 + 0.5 - c).powi(2)).sqrt();
-                let cover = |r: f32| (r - d + 0.5).clamp(0.0, 1.0);
-                let ring = cover(ring_outer) * (1.0 - cover(ring_inner));
-                let a = (ring + cover(dot)).min(1.0);
-                let a8 = (a * 255.0) as u32;
-                pixels[(y * size + x) as usize] = a8 << 24 | (rgb.0 as u32) << 16 | (rgb.1 as u32) << 8 | rgb.2 as u32;
-            }
+        let dst = std::slice::from_raw_parts_mut(bits as *mut u8, rgba.len());
+        for (d, s) in dst.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
+            d.copy_from_slice(&[s[2], s[1], s[0], s[3]]); // RGBA -> BGRA
         }
-        let mask = CreateBitmap(size, size, 1, 1, None);
+        let mask = CreateBitmap(size as i32, size as i32, 1, 1, None);
         let info = ICONINFO { fIcon: true.into(), xHotspot: 0, yHotspot: 0, hbmMask: mask, hbmColor: color };
         let icon = CreateIconIndirect(&info).unwrap_or_default();
         let _ = DeleteObject(color.into());
         let _ = DeleteObject(mask.into());
         icon
+    }
+}
+
+/// The app icon embedded by build.rs, at the requested size.
+pub fn load_app_icon(size: i32) -> HICON {
+    unsafe {
+        let instance = GetModuleHandleW(None).unwrap_or_default();
+        LoadImageW(Some(instance.into()), PCWSTR(1 as _), IMAGE_ICON, size, size, LR_DEFAULTCOLOR)
+            .map(|h| HICON(h.0))
+            .unwrap_or_default()
+    }
+}
+
+/// Whether the taskbar uses the light theme (so tray icons should be dark).
+pub fn taskbar_is_light() -> bool {
+    let mut value = 0u32;
+    let mut size = size_of::<u32>() as u32;
+    unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"),
+            w!("SystemUsesLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut value as *mut u32 as _),
+            Some(&mut size),
+        )
+        .is_ok()
+            && value != 0
     }
 }
 
