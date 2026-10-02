@@ -41,6 +41,7 @@ const ID_BROWSE: i32 = 111;
 const ID_SOUND: i32 = 112;
 const ID_AUTOSTART: i32 = 113;
 const ID_MIC_VOLUME: i32 = 114;
+const ID_CURSOR: i32 = 115;
 
 const LENGTHS: [(u32, &str); 9] = [
     (15, "15 seconds"),
@@ -323,6 +324,8 @@ impl Settings {
             ID_MEMORY,
             font,
         );
+        y += row;
+        checkbox(ID_CURSOR, "Record the mouse cursor", label_x, y, width - 2 * label_x, cfg.capture_cursor);
         y += row + s(10);
 
         // --- Audio
@@ -442,6 +445,7 @@ impl Settings {
         cfg.resolution = RESOLUTIONS[combo_index(h, ID_RESOLUTION).min(RESOLUTIONS.len() - 1)].0;
         cfg.fps = FRAME_RATES[combo_index(h, ID_FPS).min(FRAME_RATES.len() - 1)];
         cfg.bitrate_mbps = window_text(item(h, ID_BITRATE)).parse::<u32>().unwrap_or(cfg.bitrate_mbps).clamp(1, 150);
+        cfg.capture_cursor = checked(h, ID_CURSOR);
         cfg.system_audio = checked(h, ID_SYSTEM_AUDIO);
         cfg.microphone = checked(h, ID_MIC);
         cfg.microphone_device = match combo_index(h, ID_MIC_DEVICE) {

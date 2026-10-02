@@ -16,6 +16,7 @@ pub struct Config {
     pub resolution: u32,
     pub fps: u32,
     pub bitrate_mbps: u32,
+    pub capture_cursor: bool,
     pub system_audio: bool,
     pub microphone: bool,
     /// Endpoint id, empty = default microphone.
@@ -46,6 +47,7 @@ impl Default for Config {
             resolution: 0,
             fps: 60,
             bitrate_mbps: 20,
+            capture_cursor: true,
             system_audio: true,
             microphone: false,
             microphone_device: String::new(),
@@ -105,6 +107,7 @@ impl Config {
                 "resolution" => set(&mut self.resolution, num()),
                 "fps" => set(&mut self.fps, num()),
                 "bitrate_mbps" => set(&mut self.bitrate_mbps, num()),
+                "capture_cursor" => set(&mut self.capture_cursor, flag()),
                 "system_audio" => set(&mut self.system_audio, flag()),
                 "microphone" => set(&mut self.microphone, flag()),
                 "microphone_device" => set(&mut self.microphone_device, text()),
@@ -121,7 +124,7 @@ impl Config {
         let s = |v: &str| format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\""));
         format!(
             "hotkey_modifiers = {}\nhotkey_key = {}\nreplay_seconds = {}\nmonitor = {}\nresolution = {}\nfps = {}\n\
-             bitrate_mbps = {}\nsystem_audio = {}\nmicrophone = {}\nmicrophone_device = {}\nmicrophone_volume = {}\n\
+             bitrate_mbps = {}\ncapture_cursor = {}\nsystem_audio = {}\nmicrophone = {}\nmicrophone_device = {}\nmicrophone_volume = {}\n\
              save_folder = {}\nsave_sound = {}\nstart_with_windows = {}\n",
             self.hotkey_modifiers,
             self.hotkey_key,
@@ -130,6 +133,7 @@ impl Config {
             self.resolution,
             self.fps,
             self.bitrate_mbps,
+            self.capture_cursor,
             self.system_audio,
             self.microphone,
             s(&self.microphone_device),
@@ -149,8 +153,8 @@ impl Config {
 
     /// Settings that require restarting the capture pipeline when changed.
     pub fn capture_settings_differ(&self, other: &Config) -> bool {
-        (self.monitor, self.resolution, self.fps, self.bitrate_mbps)
-            != (other.monitor, other.resolution, other.fps, other.bitrate_mbps)
+        (self.monitor, self.resolution, self.fps, self.bitrate_mbps, self.capture_cursor)
+            != (other.monitor, other.resolution, other.fps, other.bitrate_mbps, other.capture_cursor)
             || (self.system_audio, self.microphone, &self.microphone_device, self.microphone_volume)
                 != (other.system_audio, other.microphone, &other.microphone_device, other.microphone_volume)
     }
@@ -199,6 +203,7 @@ mod tests {
         let mut cfg = Config::default();
         cfg.save_folder = r#"C:\Users\x\Vids "quoted""#.into();
         cfg.microphone = true;
+        cfg.capture_cursor = false;
         cfg.fps = 144;
         let mut back = Config::default();
         back.parse(&cfg.to_toml());

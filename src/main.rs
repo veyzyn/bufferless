@@ -13,6 +13,7 @@ mod audio;
 mod capture;
 mod clock;
 mod config;
+mod cursor;
 mod encoder;
 mod icon;
 mod logging;

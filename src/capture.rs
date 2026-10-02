@@ -22,6 +22,7 @@ use windows::Win32::System::Threading::{
 use windows::core::{Interface, Result};
 
 use crate::clock::{self, SECOND};
+use crate::cursor::CursorOverlay;
 use crate::encoder::{EncoderSettings, H264Encoder};
 use crate::log;
 use crate::ring::{Ring, VideoFormat};
@@ -33,6 +34,8 @@ pub struct VideoConfig {
     pub bitrate: u32,
     /// Output height, or 0 for native resolution.
     pub height: u32,
+    /// Draw the mouse cursor into the video.
+    pub cursor: bool,
 }
 
 pub struct MonitorInfo {
@@ -97,7 +100,7 @@ pub fn output_size(src_w: u32, src_h: u32, target_h: u32) -> (u32, u32) {
 struct Converter {
     video_context: ID3D11VideoContext,
     processor: ID3D11VideoProcessor,
-    input_view: ID3D11VideoProcessorInputView,
+    input_views: Vec<ID3D11VideoProcessorInputView>,
     output_views: Vec<ID3D11VideoProcessorOutputView>,
 }
 
@@ -105,7 +108,7 @@ impl Converter {
     fn new(
         device: &ID3D11Device,
         context: &ID3D11DeviceContext,
-        input: &ID3D11Texture2D,
+        inputs: &[&ID3D11Texture2D],
         (in_w, in_h): (u32, u32),
         outputs: &[ID3D11Texture2D],
         (out_w, out_h): (u32, u32),
@@ -135,8 +138,12 @@ impl Converter {
                     Texture2D: D3D11_TEX2D_VPIV { MipSlice: 0, ArraySlice: 0 },
                 },
             };
-            let mut input_view = None;
-            video_device.CreateVideoProcessorInputView(input, &enumerator, &in_desc, Some(&mut input_view))?;
+            let mut input_views = Vec::new();
+            for &t in inputs {
+                let mut v = None;
+                video_device.CreateVideoProcessorInputView(t, &enumerator, &in_desc, Some(&mut v))?;
+                input_views.push(v.unwrap());
+            }
 
             let out_desc = D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC {
                 ViewDimension: D3D11_VPOV_DIMENSION_TEXTURE2D,
@@ -161,15 +168,15 @@ impl Converter {
                 ctx1.VideoProcessorSetOutputColorSpace1(&processor, DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709);
             }
 
-            Ok(Self { video_context, processor, input_view: input_view.unwrap(), output_views })
+            Ok(Self { video_context, processor, input_views, output_views })
         }
     }
 
-    fn convert(&self, output: usize) -> Result<()> {
+    fn convert(&self, input: usize, output: usize) -> Result<()> {
         unsafe {
             let mut stream = D3D11_VIDEO_PROCESSOR_STREAM {
                 Enable: true.into(),
-                pInputSurface: ManuallyDrop::new(Some(self.input_view.clone())),
+                pInputSurface: ManuallyDrop::new(Some(self.input_views[input].clone())),
                 ..Default::default()
             };
             let r = self.video_context.VideoProcessorBlt(
@@ -296,13 +303,28 @@ fn session(cfg: &VideoConfig, ring: &Mutex<Ring>, stop: &AtomicBool, status: &Mu
         DXGI_FORMAT_B8G8R8A8_UNORM,
         D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
     )?;
+    // The cursor is drawn onto a copy of the frame, never the frame itself:
+    // otherwise a cursor moving over an unchanged screen would leave a trail.
+    let composed = texture(
+        &device,
+        src_w,
+        src_h,
+        DXGI_FORMAT_B8G8R8A8_UNORM,
+        D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
+    )?;
+    let mut cursor = if cfg.cursor {
+        CursorOverlay::new(&device, &composed).map_err(|e| log!("video: can't draw the cursor: {e}")).ok()
+    } else {
+        None
+    };
     let pool: Vec<ID3D11Texture2D> = (0..POOL)
         .map(|_| {
             texture(&device, out_w, out_h, DXGI_FORMAT_NV12, D3D11_BIND_RENDER_TARGET | D3D11_BIND_VIDEO_ENCODER)
                 .or_else(|_| texture(&device, out_w, out_h, DXGI_FORMAT_NV12, D3D11_BIND_RENDER_TARGET))
         })
         .collect::<Result<_>>()?;
-    let converter = Converter::new(&device, &context, &frame, (src_w, src_h), &pool, (out_w, out_h), cfg.fps)?;
+    let converter =
+        Converter::new(&device, &context, &[&frame, &composed], (src_w, src_h), &pool, (out_w, out_h), cfg.fps)?;
 
     let settings = EncoderSettings { width: out_w, height: out_h, fps: cfg.fps, bitrate: cfg.bitrate };
     let mut encoder = H264Encoder::new(&device, adapter_luid, &settings)?;
@@ -342,6 +364,11 @@ fn session(cfg: &VideoConfig, ring: &Mutex<Ring>, stop: &AtomicBool, status: &Mu
                             have_frame = true;
                         }
                     }
+                    if let Some(c) = cursor.as_mut() {
+                        if let Err(e) = c.update(&device, d, &info) {
+                            log!("video: cursor update failed: {e}");
+                        }
+                    }
                     unsafe { d.ReleaseFrame()? };
                 }
                 Err(e) if e.code() == DXGI_ERROR_WAIT_TIMEOUT => {}
@@ -350,6 +377,9 @@ fn session(cfg: &VideoConfig, ring: &Mutex<Ring>, stop: &AtomicBool, status: &Mu
                     // encoding the last frame and try to reattach.
                     log!("video: duplication lost ({e}), reattaching");
                     dupl = None;
+                    if let Some(c) = cursor.as_mut() {
+                        c.reset();
+                    }
                 }
                 Err(e) => return Err(e),
             }
@@ -370,7 +400,15 @@ fn session(cfg: &VideoConfig, ring: &Mutex<Ring>, stop: &AtomicBool, status: &Mu
         let pts = start + (tick as f64 * interval) as i64;
         if have_frame {
             if encoder.wants_input() {
-                converter.convert(next_surface)?;
+                let input = match cursor.as_ref().filter(|c| c.visible()) {
+                    Some(c) => {
+                        unsafe { context.CopyResource(&composed, &frame) };
+                        c.draw(&context);
+                        1
+                    }
+                    None => 0,
+                };
+                converter.convert(input, next_surface)?;
                 encoder.submit(&pool[next_surface], pts, interval as i64)?;
                 next_surface = (next_surface + 1) % POOL;
             } else {

@@ -32,6 +32,7 @@ impl Pipeline {
             fps: cfg.fps,
             bitrate: cfg.bitrate_mbps * 1_000_000,
             height: cfg.resolution,
+            cursor: cfg.capture_cursor,
         };
         {
             let (ring, stop, status) = (ring.clone(), stop.clone(), status.clone());

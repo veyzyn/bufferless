@@ -84,6 +84,8 @@ start). Hover over it to see what's going on.
 **Bitrate.** Higher means sharper video but more memory. The window shows how much
 RAM your choice will use.
 
+**Record the mouse cursor.** Draw your cursor into clips. Games that hide it stay hidden.
+
 **Audio.** Record what you hear, your microphone, or both (they're mixed into one
 track). Pick which mic and set its volume.
 
@@ -140,8 +142,8 @@ start of a chunk. So you might get up to one extra second at the beginning.
 <details>
 <summary><b>What doesn't it do (yet)?</b></summary>
 
-- The mouse cursor isn't drawn into clips. Most games draw their own, so this
-  mostly matters when recording the desktop.
+- Cursors that invert the colours under them (like the text I-beam) are drawn
+  in black instead.
 - HDR screens are recorded in normal (SDR) colours.
 - Portrait (rotated) monitors are recorded sideways.
 - No trimming or editing, and no in-game overlay. That's on purpose.
