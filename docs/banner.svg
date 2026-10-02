@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" width="1200" height="380" role="img" aria-labelledby="title desc">
+  <title id="title">Bufferless</title>
+  <desc id="desc">The Bufferless logo, a circle trailed by two fading echoes on an indigo tile, next to the tagline: your last 60 seconds, one hotkey away.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d1a33"/>
+      <stop offset="1" stop-color="#0e0d14"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6a5ae0"/>
+      <stop offset="1" stop-color="#1e1a4a"/>
+    </linearGradient>
+    <clipPath id="card"><rect width="1200" height="380" rx="28"/></clipPath>
+  </defs>
+  <rect width="1200" height="380" rx="28" fill="url(#bg)"/>
+  <!-- the mark, huge and faint, bleeding off the right edge -->
+  <g clip-path="url(#card)" fill="#fff">
+    <circle cx="1080" cy="190" r="130" opacity="0.02"/>
+    <circle cx="1150" cy="190" r="150" opacity="0.03"/>
+    <circle cx="1240" cy="190" r="170" opacity="0.045"/>
+  </g>
+  <!-- app icon -->
+  <g transform="translate(90 100)">
+    <rect width="180" height="180" rx="42" fill="url(#tile)"/>
+    <rect x="1.5" y="1.5" width="177" height="177" rx="40.5" fill="none" stroke="#fff" stroke-opacity="0.14" stroke-width="3"/>
+    <circle cx="59" cy="90" r="25.3" fill="#fff" opacity="0.16"/>
+    <circle cx="81.6" cy="90" r="28.7" fill="#fff" opacity="0.38"/>
+    <circle cx="108.3" cy="90" r="32.3" fill="#fff"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, -apple-system, sans-serif">
+    <text x="320" y="182" font-size="76" font-weight="700" fill="#fff" letter-spacing="-1.5">bufferless</text>
+    <text x="322" y="232" font-size="28" fill="#b9b4d6">Your last 60 seconds, one hotkey away.</text>
+    <g font-size="17" text-anchor="middle">
+      <rect x="322" y="268" width="150" height="38" rx="19" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="397" y="293" fill="#dcd8f0">55 KB build</text>
+      <rect x="484" y="268" width="170" height="38" rx="19" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="569" y="293" fill="#dcd8f0">no re-encoding</text>
+      <rect x="666" y="268" width="130" height="38" rx="19" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="731" y="293" fill="#dcd8f0">no overlay</text>
+      <rect x="808" y="268" width="190" height="38" rx="19" fill="#ffffff" fill-opacity="0.07" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="903" y="293" fill="#dcd8f0">hardware encoding</text>
+    </g>
+  </g>
+</svg>
