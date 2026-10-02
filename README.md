@@ -62,11 +62,12 @@ Requires Rust (MSVC toolchain) on Windows 10 or 11.
 cargo build --release
 ```
 
-For the smallest possible exe (about 200 KB), run `.\build-tiny.ps1`. It needs a
+For the smallest possible exe (about 80 KB), run `.\build-tiny.ps1`. It needs a
 nightly toolchain and [UPX](https://upx.github.io/) (`winget install UPX.UPX`),
 rebuilds the standard library optimized for size, and writes `dist\bufferless.exe`.
 UPX-packed executables are sometimes flagged by antivirus heuristics, so pass
-`-NoUpx` for builds you share (about 410 KB).
+`-NoUpx` for builds you share (about 160 KB). The tiny build also disables
+ASLR, another reason to keep it for personal use.
 
 ## Known limitations
 
