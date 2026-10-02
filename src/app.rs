@@ -180,8 +180,14 @@ impl App {
 
     fn tooltip(&self) -> String {
         let status = self.pipeline.as_ref().map(|p| p.status()).unwrap_or_default();
-        let mb = self.ring.lock().bytes() / 1_000_000;
-        format!("Bufferless\n{status}\nLast {}s in memory ({mb} MB)", self.cfg.replay_seconds)
+        let (buffered, bytes) = {
+            let ring = self.ring.lock();
+            (ring.seconds(), ring.bytes())
+        };
+        // The ring keeps a few extra seconds so clips can start on a keyframe,
+        // but a clip is never longer than the replay length.
+        let buffered = buffered.min(self.cfg.replay_seconds);
+        format!("Bufferless\n{status}\n{buffered}s of {}s buffered ({} MB)", self.cfg.replay_seconds, bytes / 1_000_000)
     }
 
     fn refresh_tray(&mut self) {

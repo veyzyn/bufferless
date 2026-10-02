@@ -84,6 +84,14 @@ impl Ring {
         self.bytes
     }
 
+    /// How many seconds of video are buffered right now.
+    pub fn seconds(&self) -> u32 {
+        match (self.video.front(), self.video.back()) {
+            (Some(first), Some(last)) => ((last.pts - first.pts) / SECOND) as u32,
+            _ => 0,
+        }
+    }
+
     pub fn clear(&mut self) {
         self.video.clear();
         self.audio.clear();
@@ -132,5 +140,34 @@ impl Ring {
         let t0 = video[0].pts;
         let audio = self.audio.iter().filter(|p| p.pts >= t0 && p.pts <= newest).cloned().collect();
         Some(Clip { format, video, audio })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Push `secs` seconds of 10 fps video with a keyframe every second.
+    fn fill(ring: &mut Ring, secs: i64) {
+        for i in 0..secs * 10 {
+            ring.push_video(Packet { pts: i * SECOND / 10, key: i % 10 == 0, data: vec![0; 100] });
+        }
+    }
+
+    #[test]
+    fn counts_buffered_seconds() {
+        let mut ring = Ring::new(60);
+        assert_eq!(ring.seconds(), 0);
+        fill(&mut ring, 12);
+        assert_eq!(ring.seconds(), 11); // first to last frame
+    }
+
+    #[test]
+    fn stops_growing_once_full() {
+        let mut ring = Ring::new(10);
+        fill(&mut ring, 40);
+        // Keeps the replay length plus a little slack for keyframes, no more.
+        let secs = ring.seconds();
+        assert!((10..=14).contains(&secs), "buffered {secs}s");
     }
 }
