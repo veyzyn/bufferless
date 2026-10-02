@@ -182,8 +182,9 @@ and [UPX](https://upx.github.io/) (`winget install UPX.UPX`). It turns on the
 the app needs from them lives in `src/rt.rs` as small Win32 wrappers. Pass `-NoUpx`
 to skip the packed one.
 
-GitHub Actions builds and tests all three on every push, and attaches them to a
-release whenever a `v*` tag is pushed.
+GitHub Actions builds and tests all three on every push. Each push to `main` is
+published as a release with the next patch version (v0.1.1, v0.1.2, ...); push a
+tag like `v0.2.0` yourself for a bigger jump.
 
 | File | What's in it |
 | --- | --- |

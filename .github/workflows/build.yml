@@ -1,5 +1,10 @@
 name: build
 
+# Every push to main is tested, built and published as a release with the
+# next patch version (v0.1.1, v0.1.2, ...). Push a tag like v0.2.0 yourself
+# for a bigger jump; numbering continues from the newest tag. Pull requests
+# are only built and tested.
+
 on:
   push:
     branches: [main]
@@ -7,16 +12,53 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Runs for main queue up instead of overlapping, so two quick pushes can't
+# both claim the same version number.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write # to publish releases from tags
+      contents: write # to publish releases
     env:
       # Pin a known-good nightly here if a newer one breaks the tiny build.
       NIGHTLY: nightly
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # all tags, to work out the next version
+
+      - name: Pick version
+        id: version
+        shell: bash
+        run: |
+          release=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="$GITHUB_REF_NAME"
+            release=true
+          elif [[ "$GITHUB_REF" == refs/heads/main && "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            existing=$(git tag --points-at HEAD --list 'v*' | head -1)
+            if [[ -n "$existing" ]]; then
+              # Tagged by hand: that tag's own run publishes it.
+              echo "HEAD is already tagged $existing, not releasing again"
+              version="$existing"
+            else
+              latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+              IFS=. read -r major minor patch <<< "${latest:-v0.0.0}"
+              version="${major}.${minor}.$((patch + 1))"
+              release=true
+            fi
+          else
+            version="v0.0.0-dev"
+          fi
+          echo "Version: $version (release: $release)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          # Baked into the exe (shows up in the log).
+          echo "BUFFERLESS_VERSION=${version#v}" >> "$GITHUB_ENV"
 
       - name: Install toolchains and UPX
         run: |
@@ -42,17 +84,22 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: bufferless
+          name: bufferless-${{ steps.version.outputs.version }}
           path: dist/*.exe
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.version.outputs.release == 'true'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create ${{ github.ref_name }} dist/bufferless.exe dist/bufferless-small.exe dist/bufferless-tiny.exe
-          --title "Bufferless ${{ github.ref_name }}" --generate-notes
-          --notes "Three builds of the same app, pick one:
-          **bufferless.exe** is the standard build and the safest bet with antivirus.
-          **bufferless-small.exe** is the same app without Rust's std or the C runtime (~107 KB).
-          **bufferless-tiny.exe** is the small build packed with UPX (~55 KB). Packed exes are often flagged by antivirus heuristics."
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes="Three builds of the same app, pick one:
+
+          - **bufferless.exe** is the standard build and the safest bet with antivirus.
+          - **bufferless-small.exe** is the same app without Rust's std or the C runtime (~110 KB).
+          - **bufferless-tiny.exe** is the small build packed with UPX (~57 KB). Packed exes are often flagged by antivirus heuristics."
+          # Creates the tag too when it doesn't exist yet. Tags made with the
+          # workflow token don't trigger another run.
+          gh release create "$VERSION" dist/bufferless.exe dist/bufferless-small.exe dist/bufferless-tiny.exe \
+            --target "$GITHUB_SHA" --title "Bufferless $VERSION" --notes "$notes" --generate-notes

@@ -38,6 +38,13 @@ use windows::core::w;
 
 use config::Config;
 
+/// CI sets BUFFERLESS_VERSION to the release being built (Cargo.toml's
+/// version isn't bumped for every automatic release).
+pub const VERSION: &str = match option_env!("BUFFERLESS_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 fn main() {
     unsafe {
         // The manifest already sets this; harmless if it fails.
@@ -66,7 +73,7 @@ fn main() {
         let _ = rt::fs::create_dir_all(&dir);
         let first_run = !rt::fs::exists(&rt::path::join(&dir, "config.toml"));
         logging::init(&rt::path::join(&dir, "bufferless.log"));
-        log!("bufferless {} starting", env!("CARGO_PKG_VERSION"));
+        log!("bufferless {VERSION} starting");
 
         app::run(first_run);
 
