@@ -3,6 +3,8 @@ name = "bufferless"
 version = "0.1.0"
 edition = "2024"
 description = "Lightweight always-on replay buffer for Windows"
+license = "MIT"
+repository = "https://github.com/veyzyn/bufferless"
 
 [features]
 # Build without Rust's std; see src/rt.rs and build-tiny.ps1.

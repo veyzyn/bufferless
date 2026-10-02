@@ -2,6 +2,14 @@
   <img src="docs/banner.svg" alt="bufferless: your last 60 seconds, one hotkey away" width="100%">
 </p>
 
+<p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/veyzyn/bufferless?label=download&color=6a5ae0" alt="Latest release"></a>
+  <a href="../../releases"><img src="https://img.shields.io/github/downloads/veyzyn/bufferless/total?color=6a5ae0" alt="Downloads"></a>
+  <a href="../../actions/workflows/build.yml"><img src="https://github.com/veyzyn/bufferless/actions/workflows/build.yml/badge.svg" alt="Build status"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-6a5ae0" alt="Windows 10 and 11">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/veyzyn/bufferless?color=6a5ae0" alt="MIT license"></a>
+</p>
+
 **Bufferless** quietly keeps the last minute of your screen in memory. When something
 worth keeping happens, press **Alt+F10** and it's saved as an MP4. It's like NVIDIA
 Instant Replay without the overlay, the account, or the pile of background services.
@@ -187,3 +195,7 @@ release whenever a `v*` tag is pushed.
 | `src/rt.rs` | The tiny runtime used instead of Rust's std |
 | `src/icon.rs` | Draws the app and tray icons |
 </details>
+
+## License
+
+[MIT](LICENSE). Do whatever you like with it, just keep the copyright notice.

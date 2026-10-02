@@ -1,0 +1,63 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The log file helps the most, so please include it if you can.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start Bufferless
+        2. Play a game in fullscreen
+        3. Press Alt+F10
+        4. No clip is saved
+  - type: dropdown
+    id: build
+    attributes:
+      label: Which build?
+      options:
+        - bufferless.exe
+        - bufferless-small.exe
+        - bufferless-tiny.exe
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Bufferless version
+      placeholder: v0.1.0
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Press Win+R, type `winver`, and copy the version line.
+      placeholder: Windows 11 24H2 (build 26100)
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics card(s)
+      placeholder: NVIDIA GeForce RTX 3060
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log file
+      description: |
+        Paste the contents of `%APPDATA%\bufferless\bufferless.log` (paste that path into the
+        Explorer address bar to open it). The lines from the session where it went wrong are enough.
+      render: text
